@@ -3,7 +3,6 @@ import numpy as np
 import tensorflow as tf
 import math
 import scipy.io
-from tqdm import tqdm
 
 CATEGORY_MAP = {'chair': '03001627', 'table': '04379243', 'airplane': '02691156', 'lamp': '03636649'}
 URL_MAP = {'chair': 'https://gitlab.com/JunweiZheng93/shapenetsegvox/-/raw/master/03001627.zip?inline=false',
@@ -13,22 +12,22 @@ URL_MAP = {'chair': 'https://gitlab.com/JunweiZheng93/shapenetsegvox/-/raw/maste
 PROJ_ROOT = os.path.abspath(__file__)[:-19]
 
 
-def get_dataset(category='chair', split_ratio=0.8):
+def get_dataset(category='chair', max_num_parts=4, split_ratio=0.8, batch_size=32, process=1, use_dist=False, saved_path=None, loaded_path=None):
 
     category_path = download_dataset(category)
-    if category == 'table':
-        max_num_parts = 3
-    else:
-        max_num_parts = 4
 
     voxel_grid_fp, part_fp, trans_fp = get_fp(category_path)
     num_training_samples = math.ceil(len(voxel_grid_fp) * split_ratio)
+    print(f'total: {len(voxel_grid_fp)} samples - training set: {num_training_samples} samples - '
+          f'test set: {len(voxel_grid_fp)-num_training_samples} samples - split ratio: {split_ratio}')
 
     all_voxel_grid = list()
     all_part = list()
     all_trans = list()
-    print('Loading data. Please wait...')
-    for v_fp, p_fp, t_fp in tqdm(zip(voxel_grid_fp, part_fp, trans_fp), total=len(voxel_grid_fp)):
+    stat = get_statistics(category)
+
+    print('Loading data to memory. It will take a while. Please wait...')
+    for v_fp, p_fp, t_fp in zip(voxel_grid_fp, part_fp, trans_fp):
         v = scipy.io.loadmat(v_fp)['data'][:, :, :, np.newaxis]
         all_voxel_grid.append(v)
 
@@ -40,7 +39,24 @@ def get_dataset(category='chair', split_ratio=0.8):
             if i not in member_list:
                 part = np.zeros_like(v, dtype='uint8')
                 parts.append(part)
-                transformation = np.zeros((3, 4), dtype='float32')
+                if process == 2 and use_dist:
+                    scale = np.random.normal(stat[i-1, 0, 0], stat[i-1, 0, 1])
+                    translation1 = np.random.normal(stat[i-1, 1, 0], stat[i-1, 1, 1])
+                    translation2 = np.random.normal(stat[i-1, 2, 0], stat[i-1, 2, 1])
+                    translation3 = np.random.normal(stat[i-1, 3, 0], stat[i-1, 3, 1])
+                    transformation = np.zeros((3, 4), dtype='float32')
+                    transformation[0, 0] = transformation[1, 1] = transformation[2, 2] = scale
+                    transformation[0, 3] = translation1
+                    transformation[1, 3] = translation2
+                    transformation[2, 3] = translation3
+                    path = os.path.join(saved_path, 'transformations', v_fp.split('/')[-2])
+                    os.makedirs(path)
+                    scipy.io.savemat(os.path.join(path, f'part{i}_trans_matrix.mat'), {'data': transformation})
+                elif process == 3 and use_dist:
+                    path = loaded_path[:-23]
+                    transformation = scipy.io.loadmat(os.path.join(path, 'transformations', v_fp.split('/')[-2], f'part{i}_trans_matrix.mat'))['data']
+                else:
+                    transformation = np.zeros((3, 4), dtype='float32')
                 transformations.append(transformation)
             else:
                 part = scipy.io.loadmat(os.path.join(dir_name, f'part{i}.mat'))['data'][:, :, :, np.newaxis]
@@ -52,67 +68,12 @@ def get_dataset(category='chair', split_ratio=0.8):
     training_set = tf.data.Dataset.from_tensor_slices((all_voxel_grid[:num_training_samples],
                                                        all_part[:num_training_samples],
                                                        all_trans[:num_training_samples]))
-    test_set = tf.data.Dataset.from_tensor_slices((all_voxel_grid[num_training_samples:],
-                                                   all_part[num_training_samples:],
-                                                   all_trans[num_training_samples:]))
+    training_set = training_set.shuffle(len(voxel_grid_fp), reshuffle_each_iteration=True)
+    training_set = training_set.batch(batch_size, drop_remainder=False)
+    training_set = training_set.prefetch(tf.data.AUTOTUNE)
 
+    test_set = None
     return training_set, test_set
-
-
-# def get_dataset(category='chair', split_ratio=0.8):
-#
-#     category_path = download_dataset(category)
-#     if category == 'table':
-#         max_num_parts = 3
-#     else:
-#         max_num_parts = 4
-#     voxel_grid_fp, part_fp, trans_fp = get_fp(category_path)
-#     num_training_samples = math.ceil(len(voxel_grid_fp) * split_ratio)
-#
-#     all_voxel_grid = list()
-#     all_part = list()
-#     all_trans = list()
-#     stat = get_statistics(category)
-#     print('Loading data. Please wait...')
-#     for v_fp, p_fp, t_fp in tqdm(zip(voxel_grid_fp, part_fp, trans_fp), total=len(voxel_grid_fp)):
-#         v = scipy.io.loadmat(v_fp)['data'][:, :, :, np.newaxis]
-#         all_voxel_grid.append(v)
-#
-#         parts = list()
-#         transformations = list()
-#         member_list = [int(each[-5]) for each in p_fp]
-#         dir_name = os.path.dirname(v_fp)
-#         for i in range(1, max_num_parts + 1):
-#             if i not in member_list:
-#                 part = np.zeros_like(v, dtype='uint8')
-#                 parts.append(part)
-#
-#                 scale = np.random.normal(stat[i-1, 0, 0], stat[i-1, 0, 1])
-#                 translation1 = np.random.normal(stat[i-1, 1, 0], stat[i-1, 1, 1])
-#                 translation2 = np.random.normal(stat[i-1, 2, 0], stat[i-1, 2, 1])
-#                 translation3 = np.random.normal(stat[i-1, 3, 0], stat[i-1, 3, 1])
-#                 transformation = np.zeros((3, 4), dtype='float32')
-#                 transformation[0, 0] = transformation[1, 1] = transformation[2, 2] = scale
-#                 transformation[0, 3] = translation1
-#                 transformation[1, 3] = translation2
-#                 transformation[2, 3] = translation3
-#
-#                 transformations.append(transformation)
-#             else:
-#                 part = scipy.io.loadmat(os.path.join(dir_name, f'part{i}.mat'))['data'][:, :, :, np.newaxis]
-#                 parts.append(part)
-#                 transformations.append(scipy.io.loadmat(os.path.join(dir_name, f'part{i}_trans_matrix.mat'))['data'][:3])
-#         all_part.append(parts)
-#         all_trans.append(transformations)
-#
-#     training_set = tf.data.Dataset.from_tensor_slices((all_voxel_grid[:num_training_samples],
-#                                                        all_part[:num_training_samples],
-#                                                        all_trans[:num_training_samples]))
-#     test_set = tf.data.Dataset.from_tensor_slices((all_voxel_grid[num_training_samples:],
-#                                                    all_part[num_training_samples:],
-#                                                    all_trans[num_training_samples:]))
-#
-#     return training_set, test_set
 
 
 def download_dataset(category):
@@ -129,7 +90,7 @@ def download_dataset(category):
 
 
 def get_fp(category_fp):
-    shape_paths = [os.path.join(category_fp, shape_name) for shape_name in os.listdir(category_fp)]
+    shape_paths = sorted([os.path.join(category_fp, shape_name) for shape_name in os.listdir(category_fp)])
     voxel_grid_fp = list()
     part_fp = list()
     trans_fp = list()

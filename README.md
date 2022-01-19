@@ -83,13 +83,6 @@ lamp: [03636649.zip(200MB)](https://gitlab.com/JunweiZheng93/shapenetsegvox/-/ra
 number of shapes: 1546 <br>
 maximal number of parts: 4
 
-### Visualize dataset
-
-The generated dataset consists of some PNG images and `.mat` files. To visualize `.mat` files, please run:
-```bash
-cd path_of_the_project_root
-python utils/visualization.py path_of_mat_file
-```
 
 ## Training
 
@@ -119,54 +112,21 @@ shape for shape #2. The process will go on until shape #4.
 To run batch mode, please type:
 ```bash
 cd path_of_the_project_root
-python evaluate.py model_path --category the_category_you_want_to_choose
+python quality_eval.py model_path --category the_category_you_want_to_choose
 ```
 For example, if you want to evaluate how good you model is for the category `chair` (assume your model is saved in 
 `project_root/results/20210723162046/process_3/checkpoint.h5`), you need to type:
 ```bash
-python evaluate.py results/20210723162046/process_3/checkpoint.h5
+python quality_eval.py results/20210723162046/process_3/checkpoint.h5
 ```
 `chair` is the default category. so you don't need to set value for `--category`.
 
 ### single mode
 
 Single mode allows you to check the evaluation result for one specific shape. For example, if you want to evaluate how 
-good you model is for the shape `03001627/1a38407b3036795d19fb4103277a6b93`(it is a shape in catergory `chair`)
+good you model is for the shape `datasets/03001627/1a38407b3036795d19fb4103277a6b93`(it is a shape in catergory `chair`)
 and assume your model is saved in `project_root/results/20210723162046/process_3/checkpoint.h5`, you should type:
 ```bash
 cd path_of_the_project_root
-python evaluate.py results/20210723162046/process_3/checkpoint.h5 -m single -s 03001627/1a38407b3036795d19fb4103277a6b93
-```
-
-### exchange mode
-
-Exchange mode allows you to exchange parts from different shapes. For example, if you want to change part #1 from shape #1 
-and part #1 from shape #2, this is the correct mode for you. Exchange mode will first show the ground truth of the two shape 
-you want to exchange, then it will show you the reconstructed shape of the two shape respectively and finally the exchanged 
-shape will be shown.
-
-Assume your model is saved in `project_root/results/20210723162046/process_3/checkpoint.h5` and the two shape you want to 
-exchange are saved in `03001627/1a38407b3036795d19fb4103277a6b93`, `03001627/1b8e84935fdc3ec82be289de70e8db31`. To run exchange 
-mode, just type:
-```bash
-cd path_of_the_project_root
-python evaluate.py results/20210723162046/process_3/checkpoint.h5 -m exchange -e 03001627/1a38407b3036795d19fb4103277a6b93 03001627/1b8e84935fdc3ec82be289de70e8db31 --which_part 1
-```
-
-### assembly mode
-
-This mode is used to assemble parts within a batch randomly. It will firstly show the ground truth of every shape and then 
-the random assembled shapes.
-
-Assume your model is saved in `project_root/results/20210723162046/process_3/checkpoint.h5` and the shapes used as ground truth 
-are saved in `03001627/1a38407b3036795d19fb4103277a6b93`, `03001627/1b8e84935fdc3ec82be289de70e8db31`, and 
-`03001627/1f571e244384bca736b0f2a1430e993a`. To run assembly mode, just type:
-```bash
-cd path_of_the_project_root
-python evaluate.py results/20210723162046/process_3/checkpoint.h5 -m assembly -a 03001627/1a38407b3036795d19fb4103277a6b93 03001627/1b8e84935fdc3ec82be289de70e8db31 03001627/1f571e244384bca736b0f2a1430e993a
-```
-
-For more usage of `evaluate.py`, please type:
-```bash
-python evaluate.py -h
+python quality_eval.py results/20210723162046/process_3/checkpoint.h5 -m single -s datasets/03001627/1a38407b3036795d19fb4103277a6b93
 ```
