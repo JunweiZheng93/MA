@@ -50,7 +50,8 @@ def get_dataset(category='chair', max_num_parts=4, split_ratio=0.8, batch_size=3
                     transformation[1, 3] = translation2
                     transformation[2, 3] = translation3
                     path = os.path.join(saved_path, 'transformations', v_fp.split('/')[-2])
-                    os.makedirs(path)
+                    if not os.path.exists(path):
+                        os.makedirs(path)
                     scipy.io.savemat(os.path.join(path, f'part{i}_trans_matrix.mat'), {'data': transformation})
                 elif process == 3 and use_dist:
                     path = loaded_path[:-23]

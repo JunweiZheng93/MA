@@ -31,10 +31,8 @@ def evaluate_model(model_path,
         whole_model = model.get_model(hparam.hparam['category'], max_num_parts, hparam.hparam['attention'], hparam.hparam['multi_inputs'])
     if hparam.hparam['process'] == 1 or hparam.hparam['process'] == '1':
         my_model = tf.keras.Model(whole_model.input, whole_model.get_layer('tf.stack').output, name=whole_model.name)
-    elif hparam.hparam['process'] == 3 or hparam.hparam['process'] == '3':
-        my_model = tf.keras.Model(whole_model.inputs, [whole_model.get_layer('Resampling').output, whole_model.get_layer('tf.stack').output], name=whole_model.name)
     else:
-        raise ValueError(f'The model should be a model of process1 or process3. Got process{hparam.hparam["process"]} instead.')
+        my_model = tf.keras.Model(whole_model.input, [whole_model.get_layer('Resampling').output, whole_model.get_layer('tf.stack').output], name=whole_model.name)
     my_model.load_weights(model_path, by_name=True)
 
     if mode == 'batch':
@@ -98,7 +96,7 @@ def visualize_pred_label(model,
         for part in pred:
             part = np.transpose(part, (1, 0, 2))
             visualization.visualize(part, title=shape_code)
-    elif process == 3 or process == '3':
+    else:
         transformed_parts, parts = model(gt_shape)
         if visualize_decoded_part:
             pred = tf.squeeze(tf.where(parts > decoded_part_threshold, 1., 0.))
@@ -110,8 +108,6 @@ def visualize_pred_label(model,
             pred = tf.squeeze(tf.where(transformed_parts > transformed_part_threshold, 1., 0.))
             pred_label = get_pred_label(pred)
             visualization.visualize(pred_label, title=shape_code)
-    else:
-        raise ValueError(f'The model should be a model of process1 or process3. Got process{process} instead.')
 
 
 if __name__ == '__main__':

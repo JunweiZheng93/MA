@@ -7,7 +7,7 @@ from tensorflow.keras import layers
 def get_model(category='chair', max_num_parts=4, attention=False, multi_inputs=False):
 
     # Input layer
-    inputs = tf.keras.Input(shape=(32, 32, 32, 1), name='Input', batch_size=1)
+    inputs = tf.keras.Input(shape=(32, 32, 32, 1), name='Input')
 
     # Decomposer
     binary_shape_encoder_outputs = BinaryShapeEncoder(name='BinaryShapeEncoder')(inputs)
@@ -21,7 +21,7 @@ def get_model(category='chair', max_num_parts=4, attention=False, multi_inputs=F
             # stacked_decoded_parts.shape == (B, num_parts, H, W, D, C)
             stacked_decoded_parts = tf.stack(part_decoder_outputs, axis=1)
             # reshape_decoded_parts.shape == (B, num_parts, H*W*D*C)
-            reshaped_decoded_parts = tf.reshape(stacked_decoded_parts, (-1, max_num_parts, 32*32*32*1))
+            reshaped_decoded_parts = tf.reshape(stacked_decoded_parts, (tf.shape(stacked_decoded_parts)[0], max_num_parts, 32*32*32*1))
             # attention_outputs0.shape == (B, num_parts, 256)
             attention_outputs0 = AttentionLayer(num_blocks=1, num_heads=8, d_model=32*32*32, seq_len=max_num_parts, name='AttentionLayer0')(reshaped_decoded_parts)
             # proj_attention_inputs.shape == (B, num_parts, encoding_dimensions)
@@ -33,7 +33,7 @@ def get_model(category='chair', max_num_parts=4, attention=False, multi_inputs=F
             # dense_outputs.shape == (B, num_parts, 12)
             dense_outputs = keras.layers.Dense(12, name='Dense')(concat_outputs)
             # theta.shape == (B, num_parts, 3, 4)
-            theta = tf.reshape(dense_outputs, (-1, max_num_parts, 3, 4))
+            theta = tf.reshape(dense_outputs, (tf.shape(dense_outputs)[0], max_num_parts, 3, 4))
             # resampling_outputs.shape == (B, num_parts, H, W, D, C)
             resampling_outputs = Resampling(name='Resampling')([stacked_decoded_parts, theta])
             # outputs.shape == (B, H, W, D, C)
@@ -51,7 +51,7 @@ def get_model(category='chair', max_num_parts=4, attention=False, multi_inputs=F
             # dense_outputs.shape == (B, num_parts, 12)
             dense_outputs = keras.layers.Dense(12, name='Dense')(attention_outputs)
             # theta.shape == (B, num_parts, 3, 4)
-            theta = tf.reshape(dense_outputs, (-1, max_num_parts, 3, 4))
+            theta = tf.reshape(dense_outputs, (tf.shape(dense_outputs)[0], max_num_parts, 3, 4))
             # resampling_outputs.shape == (B, num_parts, H, W, D, C)
             resampling_outputs = Resampling(name='Resampling')([stacked_decoded_parts, theta])
             # outputs.shape == (B, H, W, D, C)
@@ -330,7 +330,7 @@ class Resampling(keras.layers.Layer):
         # repeat the grid num_batch times along axis=0 and num_parts times along axis=1
         sampling_grid = tf.expand_dims(sampling_grid, axis=0)
         sampling_grid = tf.expand_dims(sampling_grid, axis=1)
-        sampling_grid = tf.tile(sampling_grid, [B, num_parts, 1, 1])
+        sampling_grid = tf.tile(sampling_grid, [tf.shape(input_fmap)[0], num_parts, 1, 1])
         # sampling_grid.shape == (B, num_parts, 4, H*W*D)
 
         # cast to float32 (required for matmul)
@@ -342,7 +342,7 @@ class Resampling(keras.layers.Layer):
         # batch_grids.shape == (B, num_parts, 3, H*W*D)
 
         # reshape to (B, num_parts, 3, H, W, D)
-        batch_grids = tf.reshape(batch_grids, [B, num_parts, 3, H, W, D])
+        batch_grids = tf.reshape(batch_grids, [tf.shape(input_fmap)[0], num_parts, 3, H, W, D])
 
         return batch_grids
 
@@ -444,6 +444,7 @@ class MultiHeadAttention(keras.layers.Layer):
 
     def call(self, inputs):
         batch_size = tf.shape(inputs)[0]
+        seq_len = tf.shape(inputs)[1]
         q = self.wq(inputs)
         k = self.wk(inputs)
         v = self.wv(inputs)
@@ -456,7 +457,7 @@ class MultiHeadAttention(keras.layers.Layer):
         # scaled_attention.shape == (batch_size, seq_len, num_heads, depth)
         scaled_attention = tf.transpose(scaled_attention, (0, 2, 1, 3))
         # concat_attention.shape == (batch_size, seq_len, 256)
-        concat_attention = tf.reshape(scaled_attention, (batch_size, -1, 256))
+        concat_attention = tf.reshape(scaled_attention, (batch_size, seq_len, 256))
         # outputs.shape == (batch_size, seq_len, d_model)
         outputs = self.dense(concat_attention)
         return outputs

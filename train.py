@@ -98,7 +98,7 @@ def train_step_process3(x, y0, y1):
         pi = pi_loss(y0.shape[1], process3_model)
         part_recon = part_recon_loss(y0, part)
         trans = trans_loss(y1, tran)
-        shape_recon = shape_recon_loss(x, shape)
+        shape_recon = shape_recon_loss(tf.transpose(x, (0, 2, 1, 3, 4)), shape)
         total = pi + part_recon + trans + shape_recon
     grads = tape.gradient(total, process3_model.trainable_weights)
     optimizer.apply_gradients(zip(grads, process3_model.trainable_weights))
