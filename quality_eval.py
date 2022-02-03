@@ -25,10 +25,9 @@ def evaluate_model(model_path,
 
     if hparam.hparam['category'] == 'table':
         max_num_parts = 3
-        whole_model = model.get_model(hparam.hparam['category'], max_num_parts, hparam.hparam['attention'], hparam.hparam['multi_inputs'])
     else:
         max_num_parts = 4
-        whole_model = model.get_model(hparam.hparam['category'], max_num_parts, hparam.hparam['attention'], hparam.hparam['multi_inputs'])
+    whole_model = model.get_model(hparam.hparam['category'], max_num_parts, hparam.hparam['attention'], hparam.hparam['multi_inputs'])
     if hparam.hparam['process'] == 1 or hparam.hparam['process'] == '1':
         my_model = tf.keras.Model(whole_model.input, whole_model.get_layer('tf.stack').output, name=whole_model.name)
     else:

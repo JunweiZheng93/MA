@@ -22,16 +22,20 @@ def get_model(category='chair', max_num_parts=4, attention=False, multi_inputs=F
             stacked_decoded_parts = tf.stack(part_decoder_outputs, axis=1)
             # reshape_decoded_parts.shape == (B, num_parts, H*W*D*C)
             reshaped_decoded_parts = tf.reshape(stacked_decoded_parts, (tf.shape(stacked_decoded_parts)[0], max_num_parts, 32*32*32*1))
+            # attention_input0.shape == (B, num_parts, 256)
+            attention_input0 = keras.layers.Dense(256, activation='relu', name='Dense0')(reshaped_decoded_parts)
             # attention_outputs0.shape == (B, num_parts, 256)
-            attention_outputs0 = AttentionLayer(num_blocks=1, num_heads=8, d_model=32*32*32, seq_len=max_num_parts, name='AttentionLayer0')(reshaped_decoded_parts)
+            attention_outputs0 = AttentionLayer(num_blocks=6, num_heads=8, d_model=256, seq_len=max_num_parts, name='AttentionLayer0')(attention_input0)
             # proj_attention_inputs.shape == (B, num_parts, encoding_dimensions)
             proj_attention_inputs = tf.transpose(proj_outputs, (1, 0, 2))
+            # attention_input1.shape == (B, num_parts, 256)
+            attention_input1 = keras.layers.Dense(256, activation='relu', name='Dense1')(proj_attention_inputs)
             # attention_outputs1.shape == (B, num_parts, 256)
-            attention_outputs1 = AttentionLayer(num_blocks=10, num_heads=8, d_model=100, seq_len=max_num_parts, name='AttentionLayer1')(proj_attention_inputs)
+            attention_outputs1 = AttentionLayer(num_blocks=6, num_heads=8, d_model=256, seq_len=max_num_parts, name='AttentionLayer1')(attention_input1)
             # concat_outputs.shape == (B, num_parts, 512)
             concat_outputs = tf.concat([attention_outputs0, attention_outputs1], axis=2)
             # dense_outputs.shape == (B, num_parts, 12)
-            dense_outputs = keras.layers.Dense(12, name='Dense')(concat_outputs)
+            dense_outputs = keras.layers.Dense(12, name='Dense2')(concat_outputs)
             # theta.shape == (B, num_parts, 3, 4)
             theta = tf.reshape(dense_outputs, (tf.shape(dense_outputs)[0], max_num_parts, 3, 4))
             # resampling_outputs.shape == (B, num_parts, H, W, D, C)
@@ -45,11 +49,13 @@ def get_model(category='chair', max_num_parts=4, attention=False, multi_inputs=F
             # stacked_decoded_parts.shape == (B, num_parts, H, W, D, C)
             stacked_decoded_parts = tf.stack(part_decoder_outputs, axis=1)
             # attention_layer_inputs.shape == (B, num_parts, encoding_dimensions)
-            attention_layer_inputs = tf.transpose(proj_outputs, (1, 0, 2))
+            proj_attention_inputs = tf.transpose(proj_outputs, (1, 0, 2))
+            # attention_input.shape == (B, num_parts, 256)
+            attention_input = keras.layers.Dense(256, activation='relu', name='Dense0')(proj_attention_inputs)
             # attention_outputs.shape == (B, num_parts, 256)
-            attention_outputs = AttentionLayer(num_blocks=10, num_heads=8, d_model=100, seq_len=max_num_parts, name='AttentionLayer')(attention_layer_inputs)
+            attention_outputs = AttentionLayer(num_blocks=6, num_heads=8, d_model=256, seq_len=max_num_parts, name='AttentionLayer')(attention_input)
             # dense_outputs.shape == (B, num_parts, 12)
-            dense_outputs = keras.layers.Dense(12, name='Dense')(attention_outputs)
+            dense_outputs = keras.layers.Dense(12, name='Dense1')(attention_outputs)
             # theta.shape == (B, num_parts, 3, 4)
             theta = tf.reshape(dense_outputs, (tf.shape(dense_outputs)[0], max_num_parts, 3, 4))
             # resampling_outputs.shape == (B, num_parts, H, W, D, C)
@@ -506,22 +512,21 @@ class AttentionBlock(keras.layers.Layer):
     def __init__(self, num_heads, d_model, **kwargs):
         super(AttentionBlock, self).__init__(**kwargs)
         self.mha = MultiHeadAttention(num_heads, d_model)
-        # self.ff = FeedForward(d_model)
+        self.ff = FeedForward(d_model)
         self.layer_norm1 = keras.layers.LayerNormalization(epsilon=1e-6)
-        # self.layer_norm2 = keras.layers.LayerNormalization(epsilon=1e-6)
+        self.layer_norm2 = keras.layers.LayerNormalization(epsilon=1e-6)
         self.dropout1 = keras.layers.Dropout(0.2)
-        # self.dropout2 = keras.layers.Dropout(0.2)
+        self.dropout2 = keras.layers.Dropout(0.2)
 
     def call(self, inputs, training=False):
         x = self.mha(inputs)
         x = self.dropout1(x, training=training)
         outputs1 = self.layer_norm1(x + inputs, training=training)
-        return outputs1
-        # x = self.ff(outputs1)
-        # x = self.dropout2(x, training=training)
-        ## outputs2.shape == (batch_size, seq_len, d_model)
-        # outputs2 = self.layer_norm2(x + outputs1, training=training)
-        # return outputs2
+        x = self.ff(outputs1)
+        x = self.dropout2(x, training=training)
+        # outputs2.shape == (batch_size, seq_len, d_model)
+        outputs2 = self.layer_norm2(x + outputs1, training=training)
+        return outputs2
 
 
 class AttentionLayer(keras.layers.Layer):
@@ -534,7 +539,6 @@ class AttentionLayer(keras.layers.Layer):
         self.seq_len = seq_len
         self.positional_encoding = self._get_positional_encoding(seq_len, d_model)
         self.attention_blocks = [AttentionBlock(num_heads, d_model) for _ in range(num_blocks)]
-        self.dense = keras.layers.Dense(256)
 
     def call(self, inputs, training=False):
         # inputs.shape == (batch_size, seq_len, d_model)
@@ -542,9 +546,7 @@ class AttentionLayer(keras.layers.Layer):
         x = inputs + self.positional_encoding
         for each_block in self.attention_blocks:
             x = each_block(x, training=training)
-        # outputs.shape == (batch_size, seq_len, 256)
-        outputs = self.dense(x)
-        return outputs
+        return x
 
     @staticmethod
     def _get_angles(pos, i, d_model):

@@ -84,7 +84,10 @@ def train_step_process1(x, y):
 
 def train_step_process2(x, y):
     with tf.GradientTape() as tape:
-        output = process2_model(x, training=True)
+        if hparam['attention'] and not hparam['multi_inputs']:
+            output, _ = process2_model(x, training=True)
+        else:
+            output = process2_model(x, training=True)
         trans = trans_loss(y, output)
     grads = tape.gradient(trans, process2_model.trainable_weights)
     optimizer.apply_gradients(zip(grads, process2_model.trainable_weights))
@@ -191,7 +194,7 @@ if __name__ == '__main__':
             if hparam['multi_inputs']:
                 process2_model = tf.keras.Model(whole_model.input, whole_model.get_layer('tf.reshape_1').output, name=whole_model.name)
             else:
-                process2_model = tf.keras.Model(whole_model.input, whole_model.get_layer('tf.reshape').output, name=whole_model.name)
+                process2_model = tf.keras.Model(whole_model.input, [whole_model.get_layer('tf.reshape').output, whole_model.get_layer('tf.stack').output], name=whole_model.name)
         else:
             process2_model = tf.keras.Model(whole_model.input, whole_model.get_layer('LocalizationNet').output, name=whole_model.name)
         process2_model.load_weights(hparam['model_path'], by_name=True)
@@ -209,16 +212,7 @@ if __name__ == '__main__':
             print('epoch {}/{}'.format(epoch+1, hparam['epochs']))
             # freeze some layers
             for layer in process1_model.layers:
-                if hparam['attention']:
-                    if hparam['multi_inputs']:
-                        process2_model.get_layer(layer.name).trainable = False
-                    else:
-                        if layer.name == 'PartDecoder' or layer.name == 'tf.stack':
-                            continue
-                        else:
-                            process2_model.get_layer(layer.name).trainable = False
-                else:
-                    process2_model.get_layer(layer.name).trainable = False
+                process2_model.get_layer(layer.name).trainable = False
             # reset trackers
             trans_loss_tracker.reset_state()
             # create progress bar
@@ -255,11 +249,11 @@ if __name__ == '__main__':
         whole_model = get_model(hparam['category'], max_num_parts, hparam['attention'], hparam['multi_inputs'])
         if hparam['attention']:
             if hparam['multi_inputs']:
-                process3_model = tf.keras.Model(whole_model.inputs, [whole_model.output, whole_model.get_layer('tf.stack').output, whole_model.get_layer('tf.reshape_1').output], name=whole_model.name)
+                process3_model = tf.keras.Model(whole_model.input, [whole_model.output, whole_model.get_layer('tf.stack').output, whole_model.get_layer('tf.reshape_1').output], name=whole_model.name)
             else:
-                process3_model = tf.keras.Model(whole_model.inputs, [whole_model.output, whole_model.get_layer('tf.stack').output, whole_model.get_layer('tf.reshape').output], name=whole_model.name)
+                process3_model = tf.keras.Model(whole_model.input, [whole_model.output, whole_model.get_layer('tf.stack').output, whole_model.get_layer('tf.reshape').output], name=whole_model.name)
         else:
-            process3_model = tf.keras.Model(whole_model.inputs, [whole_model.output, whole_model.get_layer('tf.stack').output, whole_model.get_layer('LocalizationNet').output], name=whole_model.name)
+            process3_model = tf.keras.Model(whole_model.input, [whole_model.output, whole_model.get_layer('tf.stack').output, whole_model.get_layer('LocalizationNet').output], name=whole_model.name)
         process3_model.load_weights(hparam['model_path'], by_name=True)
         del whole_model
         # get loss
